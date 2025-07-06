@@ -1,6 +1,7 @@
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 from sqlalchemy import Text, JSON
+import json
 
 db = SQLAlchemy()
 
@@ -127,12 +128,19 @@ class ContentManager(db.Model):
     hook = db.Column(Text)
     caption = db.Column(Text)
     script = db.Column(Text)
+    tone = db.Column(Text)  # Content tone/style (e.g., casual, professional, humorous, inspirational)
+    call_to_action = db.Column(Text)  # Specific call to action for engagement
     music = db.Column(Text)  # Music or audio details
     duration = db.Column(db.Integer)  # in seconds
     minutes_spent = db.Column(db.Float)  # Minutes spent on creating
     content_link = db.Column(db.String(500))  # Link to published content
     hashtags_used = db.Column(Text)
     notes = db.Column(Text)
+    
+    # Repurpose tracking
+    original_content_id = db.Column(db.Integer, db.ForeignKey('content_manager.id'), nullable=True)  # Links to original content if repurposed
+    is_repurposed = db.Column(db.Boolean, default=False)  # Flag to indicate if this is repurposed content
+    
     views = db.Column(db.Integer, default=0)
     likes = db.Column(db.Integer, default=0)
     shares = db.Column(db.Integer, default=0)
@@ -148,6 +156,9 @@ class ContentManager(db.Model):
     subtasks = db.relationship('ContentSubtask', backref='content', lazy=True)
     analytics = db.relationship('Analytics', backref='content', lazy=True)
     
+    # Repurpose relationships
+    original_content = db.relationship('ContentManager', remote_side=[id], backref='repurposed_content', lazy=True)
+    
     def to_dict(self):
         return {
             'id': self.id,
@@ -162,12 +173,16 @@ class ContentManager(db.Model):
             'hook': self.hook,
             'caption': self.caption,
             'script': self.script,
+            'tone': self.tone,
+            'call_to_action': self.call_to_action,
             'music': self.music,
             'duration': self.duration,
             'minutes_spent': self.minutes_spent,
             'content_link': self.content_link,
             'hashtags_used': self.hashtags_used,
             'notes': self.notes,
+            'original_content_id': self.original_content_id,
+            'is_repurposed': self.is_repurposed,
             'views': self.views,
             'likes': self.likes,
             'shares': self.shares,
@@ -175,6 +190,8 @@ class ContentManager(db.Model):
             'saves': self.saves,
             'retention_rate': self.retention_rate,
             'platforms': [{'id': p.id, 'platform_name': p.platform_name} for p in self.platforms],
+            'original_content': {'id': self.original_content.id, 'content_title': self.original_content.content_title} if self.original_content else None,
+            'repurposed_count': len(self.repurposed_content) if hasattr(self, 'repurposed_content') else 0,
             'created_at': self.created_at.isoformat(),
             'updated_at': self.updated_at.isoformat()
         }
@@ -268,4 +285,160 @@ class Analytics(db.Model):
             'retention_rate': self.retention_rate,
             'engagement_rate': self.engagement_rate,
             'created_at': self.created_at.isoformat()
+        }
+
+# Trend Analytics Models
+class TrendingTopic(db.Model):
+    __tablename__ = 'trending_topics'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    topic = db.Column(db.String(200), nullable=False)
+    hashtags = db.Column(Text)  # JSON string of related hashtags
+    platforms = db.Column(Text)  # JSON string of platform data
+    trend_score = db.Column(db.Float, default=0.0)  # 0-100 trending score
+    niche_category = db.Column(db.String(100))
+    volume_24h = db.Column(db.Integer, default=0)  # Posts in last 24h
+    engagement_rate = db.Column(db.Float, default=0.0)
+    growth_rate = db.Column(db.Float, default=0.0)  # % growth in last 24h
+    peak_time = db.Column(db.DateTime)  # When trend peaked
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'topic': self.topic,
+            'hashtags': json.loads(self.hashtags) if self.hashtags else [],
+            'platforms': json.loads(self.platforms) if self.platforms else {},
+            'trend_score': self.trend_score,
+            'niche_category': self.niche_category,
+            'volume_24h': self.volume_24h,
+            'engagement_rate': self.engagement_rate,
+            'growth_rate': self.growth_rate,
+            'peak_time': self.peak_time.isoformat() if self.peak_time else None,
+            'is_active': self.is_active,
+            'created_at': self.created_at.isoformat(),
+            'updated_at': self.updated_at.isoformat()
+        }
+
+class ContentPerformanceAnalysis(db.Model):
+    __tablename__ = 'content_performance_analysis'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    content_id = db.Column(db.Integer, db.ForeignKey('content_manager.id'), nullable=False)
+    analysis_date = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Performance Metrics
+    performance_score = db.Column(db.Float, default=0.0)  # 0-100 overall score
+    engagement_score = db.Column(db.Float, default=0.0)
+    viral_potential = db.Column(db.Float, default=0.0)
+    trend_alignment = db.Column(db.Float, default=0.0)
+    
+    # Analysis Results
+    best_performing_elements = db.Column(Text)  # JSON of what worked
+    improvement_suggestions = db.Column(Text)  # JSON of suggestions
+    similar_trending_content = db.Column(Text)  # JSON of similar trending posts
+    optimal_post_time = db.Column(db.Time)
+    predicted_reach = db.Column(db.Integer)
+    
+    # Relationships
+    content = db.relationship('ContentManager', backref='performance_analyses')
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'content_id': self.content_id,
+            'analysis_date': self.analysis_date.isoformat(),
+            'performance_score': self.performance_score,
+            'engagement_score': self.engagement_score,
+            'viral_potential': self.viral_potential,
+            'trend_alignment': self.trend_alignment,
+            'best_performing_elements': json.loads(self.best_performing_elements) if self.best_performing_elements else [],
+            'improvement_suggestions': json.loads(self.improvement_suggestions) if self.improvement_suggestions else [],
+            'similar_trending_content': json.loads(self.similar_trending_content) if self.similar_trending_content else [],
+            'optimal_post_time': self.optimal_post_time.strftime('%H:%M') if self.optimal_post_time else None,
+            'predicted_reach': self.predicted_reach
+        }
+
+class CompetitorAnalysis(db.Model):
+    __tablename__ = 'competitor_analysis'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    competitor_name = db.Column(db.String(100), nullable=False)
+    platform = db.Column(db.String(50), nullable=False)
+    username = db.Column(db.String(100))
+    niche_category = db.Column(db.String(100))
+    
+    # Metrics
+    followers_count = db.Column(db.Integer, default=0)
+    avg_engagement_rate = db.Column(db.Float, default=0.0)
+    post_frequency = db.Column(db.Float, default=0.0)  # posts per day
+    best_content_types = db.Column(Text)  # JSON array
+    trending_hashtags = db.Column(Text)  # JSON array
+    
+    # Analysis
+    content_strategy = db.Column(Text)  # What they're doing well
+    posting_patterns = db.Column(Text)  # JSON of timing analysis
+    growth_rate = db.Column(db.Float, default=0.0)
+    
+    last_analyzed = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'competitor_name': self.competitor_name,
+            'platform': self.platform,
+            'username': self.username,
+            'niche_category': self.niche_category,
+            'followers_count': self.followers_count,
+            'avg_engagement_rate': self.avg_engagement_rate,
+            'post_frequency': self.post_frequency,
+            'best_content_types': json.loads(self.best_content_types) if self.best_content_types else [],
+            'trending_hashtags': json.loads(self.trending_hashtags) if self.trending_hashtags else [],
+            'content_strategy': self.content_strategy,
+            'posting_patterns': json.loads(self.posting_patterns) if self.posting_patterns else {},
+            'growth_rate': self.growth_rate,
+            'last_analyzed': self.last_analyzed.isoformat(),
+            'created_at': self.created_at.isoformat()
+        }
+
+class NicheInsights(db.Model):
+    __tablename__ = 'niche_insights'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    niche_name = db.Column(db.String(100), nullable=False)
+    insight_type = db.Column(db.String(50), nullable=False)  # trend, pattern, opportunity
+    title = db.Column(db.String(200), nullable=False)
+    description = db.Column(Text)
+    
+    # Data
+    supporting_data = db.Column(Text)  # JSON of metrics/evidence
+    confidence_score = db.Column(db.Float, default=0.0)  # 0-100
+    action_items = db.Column(Text)  # JSON array of suggested actions
+    
+    # Metadata
+    priority = db.Column(db.String(20), default='medium')  # low, medium, high
+    status = db.Column(db.String(20), default='active')  # active, archived
+    expiry_date = db.Column(db.DateTime)  # When insight becomes stale
+    
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'niche_name': self.niche_name,
+            'insight_type': self.insight_type,
+            'title': self.title,
+            'description': self.description,
+            'supporting_data': json.loads(self.supporting_data) if self.supporting_data else {},
+            'confidence_score': self.confidence_score,
+            'action_items': json.loads(self.action_items) if self.action_items else [],
+            'priority': self.priority,
+            'status': self.status,
+            'expiry_date': self.expiry_date.isoformat() if self.expiry_date else None,
+            'created_at': self.created_at.isoformat(),
+            'updated_at': self.updated_at.isoformat()
         } 

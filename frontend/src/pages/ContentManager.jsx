@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getContentManager, createContentItem, updateContentItem, deleteContentItem, getContentIdeas, getPlatforms, getContentPillars } from '../services/api.js';
+import { getContentManager, createContentItem, updateContentItem, deleteContentItem, getContentIdeas, getPlatforms, getContentPillars, generateContentField, repurposeContentItem } from '../services/api.js';
 
 const ContentManager = () => {
   const [content, setContent] = useState([]);
@@ -23,6 +23,8 @@ const ContentManager = () => {
     hook: '',
     caption: '',
     script: '',
+    tone: '',
+    call_to_action: '',
     music: '',
     duration: '',
     minutes_spent: '',
@@ -48,6 +50,14 @@ const ContentManager = () => {
     platform_ids: []
   });
   const [publishing, setPublishing] = useState(false);
+  const [aiGenerating, setAiGenerating] = useState({
+    hook: false,
+    caption: false,
+    script: false,
+    tone: false,
+    call_to_action: false,
+    hashtags: false
+  });
 
   useEffect(() => {
     loadData();
@@ -91,6 +101,8 @@ const ContentManager = () => {
       hook: '',
       caption: '',
       script: '',
+      tone: '',
+      call_to_action: '',
       music: '',
       duration: '',
       minutes_spent: '',
@@ -122,6 +134,8 @@ const ContentManager = () => {
       hook: contentItem.hook || '',
       caption: contentItem.caption || '',
       script: contentItem.script || '',
+      tone: contentItem.tone || '',
+      call_to_action: contentItem.call_to_action || '',
       music: contentItem.music || '',
       duration: contentItem.duration || '',
       minutes_spent: contentItem.minutes_spent || '',
@@ -236,13 +250,14 @@ const ContentManager = () => {
         },
         body: JSON.stringify(publishFormData),
       });
-      
+
       if (!response.ok) {
-        throw new Error('Failed to publish content');
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
-      
-      setShowPublishModal(false);
+
       await loadData();
+      setShowPublishModal(false);
+      setShowActionModal(false);
       setSuccessMessage('Content published successfully!');
       setTimeout(() => setSuccessMessage(''), 3000);
     } catch (error) {
@@ -250,6 +265,59 @@ const ContentManager = () => {
       alert('Error publishing content');
     } finally {
       setPublishing(false);
+    }
+  };
+
+  const handleAiGenerate = async (fieldType) => {
+    setAiGenerating(prev => ({ ...prev, [fieldType]: true }));
+    
+    try {
+      const result = await generateContentField(fieldType, formData);
+      
+      if (result.success) {
+        setFormData(prev => ({
+          ...prev,
+          [fieldType === 'hashtags' ? 'hashtags_used' : fieldType]: result.content
+        }));
+        setSuccessMessage(`AI generated ${fieldType} successfully!`);
+        setTimeout(() => setSuccessMessage(''), 3000);
+      } else {
+        alert(`Error generating ${fieldType}: ${result.error}`);
+      }
+    } catch (error) {
+      console.error(`Error generating ${fieldType}:`, error);
+      alert(`Error generating ${fieldType}. Please try again.`);
+    } finally {
+      setAiGenerating(prev => ({ ...prev, [fieldType]: false }));
+    }
+  };
+
+  const handleRepurpose = async (contentItem) => {
+    if (contentItem.status !== 'published') {
+      alert('Can only repurpose published content');
+      return;
+    }
+    
+    if (!window.confirm(`Repurpose "${contentItem.content_title}"? This will create a new content item with reset analytics and 0 minutes spent.`)) {
+      return;
+    }
+    
+    try {
+      setSaving(true);
+      const repurposedContent = await repurposeContentItem(contentItem.id);
+      await loadData();
+      setShowActionModal(false);
+      setSuccessMessage(`Content repurposed successfully! New content: "${repurposedContent.content_title}"`);
+      setTimeout(() => setSuccessMessage(''), 4000);
+      
+      // Optionally, open the repurposed content for editing
+      handleEdit(repurposedContent);
+      
+    } catch (error) {
+      console.error('Error repurposing content:', error);
+      alert('Error repurposing content. Please try again.');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -455,10 +523,41 @@ const ContentManager = () => {
                       {selectedContent.content_type?.replace('_', ' ')}
                     </span>
                   )}
+                  {selectedContent.is_repurposed && (
+                    <span className="px-2 py-1 text-xs font-medium bg-purple-100 text-purple-800 rounded-full">
+                      ♻️ Repurposed
+                    </span>
+                  )}
+                  {selectedContent.repurposed_count > 0 && (
+                    <span className="px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">
+                      📄 {selectedContent.repurposed_count} repurposed
+                    </span>
+                  )}
                 </div>
               </div>
               
               <div className="mb-6 space-y-4">
+                {selectedContent.is_repurposed && selectedContent.original_content && (
+                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+                    <p className="text-sm font-medium text-purple-700 mb-1">♻️ Repurposed Content</p>
+                    <p className="text-sm text-purple-600">
+                      Originally from: <span className="font-medium">{selectedContent.original_content.content_title}</span>
+                    </p>
+                    <p className="text-xs text-purple-500 mt-1">
+                      Minutes spent reset to 0 since this is repurposed content
+                    </p>
+                  </div>
+                )}
+                
+                {selectedContent.repurposed_count > 0 && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                    <p className="text-sm font-medium text-blue-700 mb-1">📄 Content Repurposed</p>
+                    <p className="text-sm text-blue-600">
+                      This content has been repurposed <span className="font-medium">{selectedContent.repurposed_count}</span> time{selectedContent.repurposed_count !== 1 ? 's' : ''}
+                    </p>
+                  </div>
+                )}
+
                 {selectedContent.intention && (
                   <div>
                     <p className="text-sm font-medium text-gray-700 mb-1">Intention/Goal:</p>
@@ -484,6 +583,20 @@ const ContentManager = () => {
                   <div>
                     <p className="text-sm font-medium text-gray-700 mb-1">Script:</p>
                     <p className="text-gray-600 text-sm">{selectedContent.script}</p>
+                  </div>
+                )}
+
+                {selectedContent.tone && (
+                  <div>
+                    <p className="text-sm font-medium text-gray-700 mb-1">Tone:</p>
+                    <p className="text-gray-600 text-sm">{selectedContent.tone}</p>
+                  </div>
+                )}
+
+                {selectedContent.call_to_action && (
+                  <div>
+                    <p className="text-sm font-medium text-gray-700 mb-1">Call to Action:</p>
+                    <p className="text-gray-600 text-sm">{selectedContent.call_to_action}</p>
                   </div>
                 )}
 
@@ -618,12 +731,23 @@ const ContentManager = () => {
                 >
                   Edit
                 </button>
-                <button
-                  onClick={() => handlePublish(selectedContent)}
-                  className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700 transition-colors"
-                >
-                  Publish
-                </button>
+                {selectedContent.status !== 'published' && (
+                  <button
+                    onClick={() => handlePublish(selectedContent)}
+                    className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700 transition-colors"
+                  >
+                    Publish
+                  </button>
+                )}
+                {selectedContent.status === 'published' && (
+                  <button
+                    onClick={() => handleRepurpose(selectedContent)}
+                    disabled={saving}
+                    className="px-4 py-2 text-sm font-medium text-white bg-purple-600 rounded-md hover:bg-purple-700 disabled:opacity-50 transition-colors"
+                  >
+                    {saving ? 'Repurposing...' : '♻️ Repurpose'}
+                  </button>
+                )}
                 <button
                   onClick={() => handleDelete(selectedContent.id)}
                   className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700 transition-colors"
@@ -818,40 +942,121 @@ const ContentManager = () => {
                   {/* Hook */}
                   <div className="md:col-span-2">
                     <label className="block text-sm font-medium text-gray-700 mb-1">Hook</label>
-                    <textarea
-                      name="hook"
-                      value={formData.hook}
-                      onChange={handleChange}
-                      rows={2}
-                      placeholder="Opening hook to grab attention..."
-                      className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                    />
+                    <div className="relative">
+                      <textarea
+                        name="hook"
+                        value={formData.hook}
+                        onChange={handleChange}
+                        rows={2}
+                        placeholder="Opening hook to grab attention..."
+                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 pr-12 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleAiGenerate('hook')}
+                        disabled={aiGenerating.hook}
+                        className="absolute top-2 right-2 px-2 py-1 text-xs font-medium text-white bg-purple-600 rounded hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        title="Generate with AI"
+                      >
+                        {aiGenerating.hook ? '⏳' : '🤖'} AI
+                      </button>
+                    </div>
                   </div>
 
                   {/* Caption */}
                   <div className="md:col-span-2">
                     <label className="block text-sm font-medium text-gray-700 mb-1">Caption</label>
-                    <textarea
-                      name="caption"
-                      value={formData.caption}
-                      onChange={handleChange}
-                      rows={3}
-                      placeholder="Content caption..."
-                      className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                    />
+                    <div className="relative">
+                      <textarea
+                        name="caption"
+                        value={formData.caption}
+                        onChange={handleChange}
+                        rows={3}
+                        placeholder="Content caption..."
+                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 pr-12 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleAiGenerate('caption')}
+                        disabled={aiGenerating.caption}
+                        className="absolute top-2 right-2 px-2 py-1 text-xs font-medium text-white bg-purple-600 rounded hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        title="Generate with AI"
+                      >
+                        {aiGenerating.caption ? '⏳' : '🤖'} AI
+                      </button>
+                    </div>
                   </div>
 
                   {/* Script */}
                   <div className="md:col-span-2">
                     <label className="block text-sm font-medium text-gray-700 mb-1">Script</label>
-                    <textarea
-                      name="script"
-                      value={formData.script}
-                      onChange={handleChange}
-                      rows={4}
-                      placeholder="Full script or talking points..."
-                      className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                    />
+                    <div className="relative">
+                      <textarea
+                        name="script"
+                        value={formData.script}
+                        onChange={handleChange}
+                        rows={4}
+                        placeholder="Full script or talking points..."
+                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 pr-12 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleAiGenerate('script')}
+                        disabled={aiGenerating.script}
+                        className="absolute top-2 right-2 px-2 py-1 text-xs font-medium text-white bg-purple-600 rounded hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        title="Generate with AI"
+                      >
+                        {aiGenerating.script ? '⏳' : '🤖'} AI
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Tone */}
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Tone</label>
+                    <div className="relative">
+                      <textarea
+                        name="tone"
+                        value={formData.tone}
+                        onChange={handleChange}
+                        rows={2}
+                        placeholder="Content tone and style (e.g., casual, professional, humorous, inspirational)..."
+                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 pr-12 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleAiGenerate('tone')}
+                        disabled={aiGenerating.tone}
+                        className="absolute top-2 right-2 px-2 py-1 text-xs font-medium text-white bg-purple-600 rounded hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        title="Generate with AI"
+                      >
+                        {aiGenerating.tone ? '⏳' : '🤖'} AI
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Call to Action */}
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Call to Action</label>
+                    <div className="relative">
+                      <textarea
+                        name="call_to_action"
+                        value={formData.call_to_action}
+                        onChange={handleChange}
+                        rows={2}
+                        placeholder="Specific call to action for engagement (e.g., ask questions, encourage shares, drive comments)..."
+                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 pr-12 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleAiGenerate('call_to_action')}
+                        disabled={aiGenerating.call_to_action}
+                        className="absolute top-2 right-2 px-2 py-1 text-xs font-medium text-white bg-purple-600 rounded hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        title="Generate with AI"
+                      >
+                        {aiGenerating.call_to_action ? '⏳' : '🤖'} AI
+                      </button>
+                    </div>
                   </div>
 
                   {/* Music */}
@@ -890,14 +1095,25 @@ const ContentManager = () => {
                   {/* Hashtags */}
                   <div className="md:col-span-2">
                     <label className="block text-sm font-medium text-gray-700 mb-1">Hashtags Used</label>
-                    <input
-                      type="text"
-                      name="hashtags_used"
-                      value={formData.hashtags_used}
-                      onChange={handleChange}
-                      placeholder="#content #creator #inspiration"
-                      className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                    />
+                    <div className="relative">
+                      <input
+                        type="text"
+                        name="hashtags_used"
+                        value={formData.hashtags_used}
+                        onChange={handleChange}
+                        placeholder="#content #creator #inspiration"
+                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 pr-12 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleAiGenerate('hashtags')}
+                        disabled={aiGenerating.hashtags}
+                        className="absolute top-2 right-2 px-2 py-1 text-xs font-medium text-white bg-purple-600 rounded hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        title="Generate with AI"
+                      >
+                        {aiGenerating.hashtags ? '⏳' : '🤖'} AI
+                      </button>
+                    </div>
                   </div>
 
                   {/* Analytics Section */}

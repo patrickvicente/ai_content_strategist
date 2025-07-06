@@ -5,8 +5,10 @@ from datetime import datetime, timedelta
 import os
 
 from config import config
-from models import db, Platform, Profile, ContentPillar, ContentIdea, ContentManager, Task, ContentSubtask, Analytics
+from models import db, Platform, Profile, ContentPillar, ContentIdea, ContentManager, Task, ContentSubtask, Analytics, TrendingTopic, ContentPerformanceAnalysis, CompetitorAnalysis, NicheInsights
 from claude_service import ClaudeService
+from analytics_service import AnalyticsService
+import json
 
 def create_app(config_name='development'):
     app = Flask(__name__)
@@ -306,37 +308,85 @@ def create_app(config_name='development'):
     
     @app.route('/api/content-manager/<int:content_id>/publish', methods=['POST'])
     def publish_content_item(content_id):
-        content_item = ContentManager.query.get_or_404(content_id)
+        content = ContentManager.query.get_or_404(content_id)
         data = request.get_json()
         
-        # Helper function to convert empty strings to None for numeric fields
         def parse_numeric(value):
             if value == '' or value is None:
                 return None
             try:
-                return float(value) if '.' in str(value) else int(value)
+                return float(value)
             except (ValueError, TypeError):
                 return None
-        
-        # Parse publish_time
+
+        # Update with publish data
         if data.get('publish_time'):
-            content_item.publish_time = datetime.fromisoformat(data['publish_time'].replace('Z', '+00:00'))
+            content.publish_time = datetime.fromisoformat(data['publish_time'].replace('Z', '+00:00'))
+        content.content_link = data.get('content_link', content.content_link)
+        content.minutes_spent = parse_numeric(data.get('minutes_spent')) or content.minutes_spent
+        content.notes = data.get('notes', content.notes)
+        content.status = 'published'
         
-        # Update fields for publishing
-        content_item.status = 'published'
-        content_item.content_link = data.get('content_link', content_item.content_link)
-        content_item.minutes_spent = parse_numeric(data.get('minutes_spent')) or content_item.minutes_spent
-        content_item.notes = data.get('notes', content_item.notes)
-        content_item.updated_at = datetime.utcnow()
-        
-        # Handle platform assignments if provided
-        if 'platform_ids' in data:
-            platform_ids = data['platform_ids']
+        # Update platforms if provided
+        if 'platform_ids' in data and data['platform_ids']:
+            platform_ids = [int(pid) for pid in data['platform_ids'] if pid]
             platforms = Platform.query.filter(Platform.id.in_(platform_ids)).all()
-            content_item.platforms = platforms
+            content.platforms = platforms
         
+        content.updated_at = datetime.utcnow()
         db.session.commit()
-        return jsonify(content_item.to_dict()), 200
+        
+        return jsonify(content.to_dict())
+    
+    # Repurpose Content
+    @app.route('/api/content-manager/<int:content_id>/repurpose', methods=['POST'])
+    def repurpose_content_item(content_id):
+        original_content = ContentManager.query.get_or_404(content_id)
+        
+        # Only allow repurposing of published content
+        if original_content.status != 'published':
+            return jsonify({'error': 'Can only repurpose published content'}), 400
+        
+        try:
+            # Create new content item based on original
+            repurposed_content = ContentManager(
+                content_title=f"Repurposed: {original_content.content_title}",
+                content_idea_id=original_content.content_idea_id,
+                content_pillar_id=original_content.content_pillar_id,
+                status='planning',  # Reset to planning
+                content_type=None,  # User should choose new type
+                content_format=None,  # User should choose new format
+                publish_time=None,  # Reset publish time
+                intention=original_content.intention,  # Keep intention
+                hook=original_content.hook,  # Copy as starting point
+                caption=original_content.caption,  # Copy as starting point
+                script=original_content.script,  # Copy as starting point
+                tone=original_content.tone,  # Keep tone
+                call_to_action=original_content.call_to_action,  # Copy as starting point
+                music=original_content.music,  # Keep music
+                duration=None,  # Reset duration
+                minutes_spent=0,  # Reset to 0 since it's repurposed
+                content_link=None,  # Reset content link
+                hashtags_used=original_content.hashtags_used,  # Copy as starting point
+                notes=f"Repurposed from: {original_content.content_title}",
+                original_content_id=original_content.id,  # Link to original
+                is_repurposed=True,  # Mark as repurposed
+                views=0,  # Reset analytics
+                likes=0,
+                shares=0,
+                comments=0,
+                saves=0,
+                retention_rate=0.0
+            )
+            
+            db.session.add(repurposed_content)
+            db.session.commit()
+            
+            return jsonify(repurposed_content.to_dict()), 201
+            
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'error': str(e)}), 500
     
     # Tasks
     @app.route('/api/tasks', methods=['GET'])
@@ -519,51 +569,411 @@ def create_app(config_name='development'):
     @app.route('/api/ai/weekly-plan', methods=['POST'])
     def generate_weekly_plan():
         if not current_app.claude_service:
-            return jsonify({'error': 'Claude API key not configured'}), 500
+            return jsonify({'error': 'Claude service not available'}), 503
         
-        pillars = ContentPillar.query.all()
-        platforms = Platform.query.all()
-        profile = Profile.query.first()
+        data = request.get_json()
         
-        plan = current_app.claude_service.generate_weekly_content_plan(
-            [p.to_dict() for p in pillars],
-            [p.platform_name for p in platforms],
-            profile.goals if profile else "Increase engagement and grow following"
-        )
+        try:
+            # Get pillars data
+            pillars = ContentPillar.query.all()
+            pillars_data = [pillar.to_dict() for pillar in pillars]
+            
+            # Get platforms
+            platforms = data.get('platforms', [])
+            goals = data.get('goals', '')
+            
+            result = current_app.claude_service.generate_weekly_content_plan(
+                pillars_data, platforms, goals
+            )
+            
+            return jsonify(result)
+            
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+    
+    # AI Content Field Generation
+    @app.route('/api/ai/generate-content-field', methods=['POST'])
+    def generate_content_field():
+        if not current_app.claude_service:
+            return jsonify({'error': 'Claude service not available'}), 503
         
-        return jsonify(plan)
+        data = request.get_json()
+        field_type = data.get('field_type')  # 'caption', 'hook', 'script', 'tone', 'call_to_action', or 'hashtags'
+        content_data = data.get('content_data', {})
+        
+        if not field_type or field_type not in ['caption', 'hook', 'script', 'tone', 'call_to_action', 'hashtags']:
+            return jsonify({'error': 'Invalid field_type. Must be caption, hook, script, tone, call_to_action, or hashtags'}), 400
+        
+        try:
+            # Get profile data
+            profile = Profile.query.first()
+            profile_data = profile.to_dict() if profile else {}
+            
+            # Get pillar data if specified
+            pillar_data = None
+            if content_data.get('content_pillar_id'):
+                pillar = ContentPillar.query.get(content_data['content_pillar_id'])
+                pillar_data = pillar.to_dict() if pillar else None
+            
+            result = current_app.claude_service.generate_content_field(
+                field_type, content_data, profile_data, pillar_data
+            )
+            
+            return jsonify(result)
+            
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
     
     # Dashboard summary
     @app.route('/api/dashboard/summary', methods=['GET'])
     def get_dashboard_summary():
-        # Get counts and recent data
-        total_platforms = Platform.query.count()
-        total_content_items = ContentManager.query.count()
-        published_content = ContentManager.query.filter_by(status='published').count()
-        pending_tasks = Task.query.filter_by(status='pending').count()
+        # Get counts
+        platforms_count = Platform.query.count()
+        content_pillars_count = ContentPillar.query.count()
+        content_ideas_count = ContentIdea.query.count()
+        content_items_count = ContentManager.query.count()
+        tasks_count = Task.query.filter_by(status='pending').count()
         
-        # Get recent analytics
-        recent_analytics = Analytics.query.filter(
-            Analytics.date_recorded >= datetime.utcnow().date() - timedelta(days=7)
-        ).all()
+        # Get recent content (last 5 items)
+        recent_content = ContentManager.query.order_by(
+            ContentManager.created_at.desc()
+        ).limit(5).all()
         
-        total_views = sum(a.views for a in recent_analytics)
-        total_engagement = sum(a.likes + a.shares + a.comments for a in recent_analytics)
+        # Get recent tasks (last 5 items)
+        recent_tasks = Task.query.order_by(
+            Task.created_at.desc()
+        ).limit(5).all()
         
         return jsonify({
-            'total_platforms': total_platforms,
-            'total_content_items': total_content_items,
-            'published_content': published_content,
-            'pending_tasks': pending_tasks,
-            'total_views_week': total_views,
-            'total_engagement_week': total_engagement,
-            'recent_analytics': [a.to_dict() for a in recent_analytics[:10]]
+            'platforms': platforms_count,
+            'contentPillars': content_pillars_count,
+            'contentIdeas': content_ideas_count,
+            'contentItems': content_items_count,
+            'tasks': tasks_count,
+            'recentContent': [content.to_dict() for content in recent_content],
+            'recentTasks': [task.to_dict() for task in recent_tasks]
         })
     
+    # Advanced Analytics Endpoints
+    @app.route('/api/analytics/trending-topics', methods=['GET'])
+    def get_trending_topics():
+        """Get trending topics for the user's niche"""
+        niche = request.args.get('niche', 'general')
+        platforms = request.args.getlist('platforms') or ['instagram', 'tiktok', 'youtube']
+        
+        analytics_service = AnalyticsService(current_app.claude_service)
+        trending_data = analytics_service.analyze_trending_topics(niche, platforms)
+        
+        # Store in database for future reference
+        for trend in trending_data[:5]:  # Store top 5 trends
+            existing = TrendingTopic.query.filter_by(topic=trend['topic']).first()
+            if existing:
+                existing.trend_score = trend['trend_score']
+                existing.volume_24h = trend['volume_24h']
+                existing.engagement_rate = trend['engagement_rate']
+                existing.growth_rate = trend['growth_rate']
+                existing.updated_at = datetime.utcnow()
+            else:
+                trending_topic = TrendingTopic(
+                    topic=trend['topic'],
+                    hashtags=json.dumps(trend['hashtags']),
+                    platforms=json.dumps(trend['platforms']),
+                    trend_score=trend['trend_score'],
+                    niche_category=niche,
+                    volume_24h=trend['volume_24h'],
+                    engagement_rate=trend['engagement_rate'],
+                    growth_rate=trend['growth_rate']
+                )
+                db.session.add(trending_topic)
+        
+        db.session.commit()
+        return jsonify(trending_data)
+    
+    @app.route('/api/analytics/performance-prediction', methods=['POST'])
+    def predict_content_performance():
+        """Predict how well content will perform"""
+        data = request.get_json()
+        content_id = data.get('content_id')
+        
+        if content_id:
+            content = ContentManager.query.get_or_404(content_id)
+            content_data = content.to_dict()
+        else:
+            content_data = data.get('content_data', {})
+        
+        # Get historical data for better predictions
+        historical_content = ContentManager.query.filter_by(status='published').all()
+        historical_data = [c.to_dict() for c in historical_content]
+        
+        analytics_service = AnalyticsService(current_app.claude_service)
+        prediction = analytics_service.predict_content_performance(content_data, historical_data)
+        
+        # Store analysis if content_id provided
+        if content_id:
+            analysis = ContentPerformanceAnalysis(
+                content_id=content_id,
+                performance_score=prediction['performance_score'],
+                engagement_score=prediction['engagement_prediction'].get('confidence', 0),
+                viral_potential=prediction['viral_potential'],
+                trend_alignment=prediction['trend_alignment'],
+                best_performing_elements=json.dumps(prediction.get('improvement_suggestions', [])),
+                improvement_suggestions=json.dumps(prediction.get('improvement_suggestions', [])),
+                similar_trending_content=json.dumps(prediction.get('similar_successful_content', [])),
+                predicted_reach=prediction['engagement_prediction'].get('likes', 0)
+            )
+            db.session.add(analysis)
+            db.session.commit()
+        
+        return jsonify(prediction)
+    
+    @app.route('/api/analytics/competitor-analysis', methods=['GET'])
+    def get_competitor_analysis():
+        """Get competitor analysis for the specified niche"""
+        niche = request.args.get('niche', 'general')
+        competitors = request.args.getlist('competitors')
+        
+        def convert_frequency_to_posts_per_day(frequency_text):
+            """Convert text frequency to numeric posts per day"""
+            if not frequency_text or not isinstance(frequency_text, str):
+                return 0.0
+            
+            frequency_lower = frequency_text.lower()
+            
+            if 'daily' in frequency_lower:
+                return 1.0
+            elif '2x/week' in frequency_lower:
+                return 2.0 / 7.0  # 2 posts per 7 days
+            elif '3x/week' in frequency_lower:
+                return 3.0 / 7.0
+            elif '4x/week' in frequency_lower:
+                return 4.0 / 7.0
+            elif '5x/week' in frequency_lower:
+                return 5.0 / 7.0
+            elif '6x/week' in frequency_lower:
+                return 6.0 / 7.0
+            elif 'weekly' in frequency_lower or '1x/week' in frequency_lower:
+                return 1.0 / 7.0
+            elif 'monthly' in frequency_lower:
+                return 1.0 / 30.0
+            else:
+                # Try to extract numbers for patterns like "3 times a week"
+                import re
+                numbers = re.findall(r'\d+', frequency_lower)
+                if numbers:
+                    if 'week' in frequency_lower:
+                        return float(numbers[0]) / 7.0
+                    elif 'month' in frequency_lower:
+                        return float(numbers[0]) / 30.0
+                    elif 'day' in frequency_lower:
+                        return float(numbers[0])
+                return 0.5  # Default fallback
+        
+        analytics_service = AnalyticsService(current_app.claude_service)
+        competitor_data = analytics_service.analyze_competitors(niche, competitors if competitors else None)
+        
+        # Store competitor data
+        for comp_data in competitor_data:
+            # Convert text frequency to numeric value
+            frequency_text = comp_data['platform_performance'].get('post_frequency', '0')
+            numeric_frequency = convert_frequency_to_posts_per_day(frequency_text)
+            
+            existing = CompetitorAnalysis.query.filter_by(
+                username=comp_data['username'],
+                platform=comp_data.get('platform', 'instagram').lower()
+            ).first()
+            
+            if existing:
+                existing.avg_engagement_rate = comp_data['platform_performance'].get('avg_engagement_rate', 0)
+                existing.post_frequency = numeric_frequency
+                existing.trending_hashtags = json.dumps(comp_data.get('trending_hashtags', []))
+                existing.content_strategy = str(comp_data.get('content_strategy', ''))
+                existing.posting_patterns = json.dumps(comp_data.get('posting_patterns', {}))
+                existing.followers_count = comp_data.get('followers', 0)
+                existing.last_analyzed = datetime.utcnow()
+            else:
+                competitor = CompetitorAnalysis(
+                    competitor_name=comp_data['username'],
+                    platform=comp_data.get('platform', 'instagram').lower(),
+                    username=comp_data['username'],
+                    niche_category=niche,
+                    followers_count=comp_data.get('followers', 0),
+                    avg_engagement_rate=comp_data['platform_performance'].get('avg_engagement_rate', 0),
+                    post_frequency=numeric_frequency,
+                    trending_hashtags=json.dumps(comp_data.get('trending_hashtags', [])),
+                    content_strategy=str(comp_data.get('content_strategy', '')),
+                    posting_patterns=json.dumps(comp_data.get('posting_patterns', {}))
+                )
+                db.session.add(competitor)
+        
+        db.session.commit()
+        return jsonify(competitor_data)
+    
+    @app.route('/api/analytics/niche-insights', methods=['GET'])
+    def get_niche_insights():
+        """Get AI-powered insights about the user's niche"""
+        niche = request.args.get('niche', 'general')
+        
+        # Get user's content for analysis
+        user_content = ContentManager.query.all()
+        user_content_data = [c.to_dict() for c in user_content]
+        
+        analytics_service = AnalyticsService(current_app.claude_service)
+        insights = analytics_service.generate_niche_insights(niche, user_content_data)
+        
+        # Store insights
+        for insight in insights:
+            existing = NicheInsights.query.filter_by(
+                title=insight['title'],
+                niche_name=niche
+            ).first()
+            
+            if not existing:
+                niche_insight = NicheInsights(
+                    niche_name=niche,
+                    insight_type=insight['type'],
+                    title=insight['title'],
+                    description=insight['description'],
+                    supporting_data=json.dumps(insight.get('supporting_data', {})),
+                    confidence_score=insight.get('confidence_score', 0),
+                    action_items=json.dumps(insight.get('action_items', [])),
+                    priority=insight.get('priority', 'medium')
+                )
+                db.session.add(niche_insight)
+        
+        db.session.commit()
+        return jsonify(insights)
+    
+    @app.route('/api/analytics/content-analysis/<int:content_id>', methods=['GET'])
+    def get_content_analysis(content_id):
+        """Get detailed analysis for a specific content item"""
+        content = ContentManager.query.get_or_404(content_id)
+        
+        # Get existing analysis
+        analysis = ContentPerformanceAnalysis.query.filter_by(content_id=content_id).first()
+        if analysis:
+            return jsonify(analysis.to_dict())
+        
+        # Generate new analysis
+        analytics_service = AnalyticsService(current_app.claude_service)
+        historical_content = ContentManager.query.filter_by(status='published').all()
+        historical_data = [c.to_dict() for c in historical_content]
+        
+        prediction = analytics_service.predict_content_performance(content.to_dict(), historical_data)
+        
+        # Store the analysis
+        analysis = ContentPerformanceAnalysis(
+            content_id=content_id,
+            performance_score=prediction['performance_score'],
+            engagement_score=prediction['engagement_prediction'].get('confidence', 0),
+            viral_potential=prediction['viral_potential'],
+            trend_alignment=prediction['trend_alignment'],
+            best_performing_elements=json.dumps(prediction.get('improvement_suggestions', [])),
+            improvement_suggestions=json.dumps(prediction.get('improvement_suggestions', [])),
+            similar_trending_content=json.dumps(prediction.get('similar_successful_content', [])),
+            predicted_reach=prediction['engagement_prediction'].get('likes', 0)
+        )
+        db.session.add(analysis)
+        db.session.commit()
+        
+        return jsonify(analysis.to_dict())
+    
+    @app.route('/api/analytics/dashboard', methods=['GET'])
+    def get_analytics_dashboard():
+        """Get comprehensive analytics dashboard data"""
+        niche = request.args.get('niche', 'general')
+        
+        # Get trending topics
+        trending_topics = TrendingTopic.query.filter_by(
+            niche_category=niche,
+            is_active=True
+        ).order_by(TrendingTopic.trend_score.desc()).limit(5).all()
+        
+        # Get recent insights
+        recent_insights = NicheInsights.query.filter_by(
+            niche_name=niche,
+            status='active'
+        ).order_by(NicheInsights.created_at.desc()).limit(10).all()
+        
+        # Get performance analyses
+        performance_analyses = ContentPerformanceAnalysis.query.join(
+            ContentManager
+        ).order_by(ContentPerformanceAnalysis.analysis_date.desc()).limit(10).all()
+        
+        # Get competitor data
+        competitors = CompetitorAnalysis.query.filter_by(
+            niche_category=niche
+        ).order_by(CompetitorAnalysis.last_analyzed.desc()).limit(5).all()
+        
+        return jsonify({
+            'trending_topics': [t.to_dict() for t in trending_topics],
+            'insights': [i.to_dict() for i in recent_insights],
+            'performance_analyses': [p.to_dict() for p in performance_analyses],
+            'competitors': [c.to_dict() for c in competitors]
+        })
+    
+    @app.route('/api/analytics/hashtag-analysis', methods=['POST'])
+    def analyze_hashtags():
+        """Analyze hashtag performance and suggest optimal hashtags"""
+        data = request.get_json()
+        hashtags = data.get('hashtags', [])
+        niche = data.get('niche', 'general')
+        
+        analytics_service = AnalyticsService(current_app.claude_service)
+        
+        # Get trending topics to find related hashtags
+        trending_topics = TrendingTopic.query.filter_by(
+            niche_category=niche,
+            is_active=True
+        ).all()
+        
+        hashtag_analysis = {
+            'input_hashtags': hashtags,
+            'trending_hashtags': [],
+            'suggested_hashtags': [],
+            'hashtag_scores': {},
+            'optimization_tips': []
+        }
+        
+        # Extract trending hashtags
+        for topic in trending_topics:
+            if topic.hashtags:
+                trending_hashtags = json.loads(topic.hashtags)
+                hashtag_analysis['trending_hashtags'].extend(trending_hashtags)
+        
+        # Remove duplicates and limit
+        hashtag_analysis['trending_hashtags'] = list(set(hashtag_analysis['trending_hashtags']))[:10]
+        
+        # Generate suggestions based on niche and trends
+        hashtag_analysis['suggested_hashtags'] = [
+            f'#{niche}tips',
+            f'#{niche}inspiration',
+            f'#{niche}community',
+            '#trending2024',
+            '#viral'
+        ]
+        
+        # Score input hashtags
+        for hashtag in hashtags:
+            score = 50  # Base score
+            if hashtag in hashtag_analysis['trending_hashtags']:
+                score += 30
+            if any(keyword in hashtag.lower() for keyword in ['trending', 'viral', '2024']):
+                score += 20
+            hashtag_analysis['hashtag_scores'][hashtag] = min(score, 100)
+        
+        hashtag_analysis['optimization_tips'] = [
+            "Use a mix of popular and niche-specific hashtags",
+            "Include trending hashtags for better discoverability",
+            "Limit to 5-10 hashtags for optimal performance",
+            "Create branded hashtags for community building"
+        ]
+        
+        return jsonify(hashtag_analysis)
+
     return app
 
 if __name__ == '__main__':
     app = create_app()
     with app.app_context():
         db.create_all()
-    app.run(debug=True) 
+    app.run(debug=True, host='0.0.0.0', port=5000) 

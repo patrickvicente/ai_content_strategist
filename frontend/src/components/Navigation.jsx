@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { 
   HomeIcon, 
@@ -13,50 +13,110 @@ import {
 } from '@heroicons/react/24/outline';
 
 const Navigation = () => {
+  const [isOpen, setIsOpen] = useState(false);
   const location = useLocation();
 
-  const navigationItems = [
-    { name: 'Dashboard', href: '/', icon: HomeIcon },
-    { name: 'Profile', href: '/profile', icon: UserIcon },
-    { name: 'Platforms', href: '/platforms', icon: DevicePhoneMobileIcon },
-    { name: 'Content Pillars', href: '/content-pillars', icon: LightBulbIcon },
-    { name: 'Content Ideas', href: '/content-ideas', icon: DocumentTextIcon },
-    { name: 'Content Manager', href: '/content-manager', icon: ClipboardDocumentListIcon },
-    { name: 'Tasks', href: '/tasks', icon: CheckCircleIcon },
-    { name: 'Analytics', href: '/analytics', icon: ChartBarIcon },
-    { name: 'AI Strategy', href: '/ai-strategy', icon: CpuChipIcon },
+  const isActive = (path) => location.pathname === path;
+
+  const navItems = [
+    { path: '/', label: '🏠 Dashboard', icon: '🏠' },
+    { path: '/profile', label: '👤 Profile', icon: '👤' },
+    { path: '/platforms', label: '📱 Platforms', icon: '📱' },
+    { path: '/content-pillars', label: '🏛️ Content Pillars', icon: '🏛️' },
+    { path: '/content-ideas', label: '💡 Content Ideas', icon: '💡' },
+    { path: '/content-manager', label: '📋 Content Manager', icon: '📋' },
+    { path: '/tasks', label: '✅ Tasks', icon: '✅' },
+    { path: '/analytics', label: '📊 Analytics', icon: '📊' },
+    { path: '/trend-analytics', label: '📈 Trend Analytics', icon: '📈' },
+    { path: '/ai-strategy', label: '🤖 AI Strategy', icon: '🤖' },
   ];
 
   return (
-    <nav className="bg-white shadow-lg">
-      <div className="max-w-7xl mx-auto px-4">
-        <div className="flex justify-between">
-          <div className="flex">
-            <div className="flex-shrink-0 flex items-center">
-              <h1 className="text-xl font-bold text-gray-800">AI Content Strategist</h1>
-            </div>
-            <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
-              {navigationItems.map((item) => {
-                const isActive = location.pathname === item.href;
-                return (
-                  <Link
-                    key={item.name}
-                    to={item.href}
-                    className={`${
-                      isActive
-                        ? 'border-indigo-500 text-gray-900'
-                        : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                    } inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium`}
-                  >
-                    <item.icon className="h-4 w-4 mr-2" />
-                    {item.name}
-                  </Link>
-                );
-              })}
-            </div>
+    <nav className="bg-dark-card border-b border-dark-border shadow-lg">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex justify-between h-16">
+          <div className="flex items-center">
+            <Link 
+              to="/" 
+              className="flex items-center px-4 py-2 text-accent-gold font-bold text-xl hover:text-accent-red transition-colors"
+            >
+              🎯 AI Content Strategist
+            </Link>
+          </div>
+
+          {/* Desktop Navigation */}
+          <div className="hidden md:flex items-center space-x-1">
+            {navItems.map((item) => (
+              <Link
+                key={item.path}
+                to={item.path}
+                className={`px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 ${
+                  isActive(item.path)
+                    ? 'bg-accent-green text-text-primary shadow-md transform scale-105'
+                    : 'text-text-primary hover:bg-dark-hover hover:text-accent-gold'
+                }`}
+              >
+                <span className="mr-2">{item.icon}</span>
+                {item.label.split(' ').slice(1).join(' ')}
+              </Link>
+            ))}
+          </div>
+
+          {/* Mobile menu button */}
+          <div className="md:hidden flex items-center">
+            <button
+              onClick={() => setIsOpen(!isOpen)}
+              className="inline-flex items-center justify-center p-2 rounded-md text-text-primary hover:text-accent-gold hover:bg-dark-hover focus:outline-none focus:ring-2 focus:ring-accent-gold transition-colors"
+            >
+              <svg
+                className="h-6 w-6"
+                stroke="currentColor"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                {isOpen ? (
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                ) : (
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 6h16M4 12h16M4 18h16"
+                  />
+                )}
+              </svg>
+            </button>
           </div>
         </div>
       </div>
+
+      {/* Mobile Navigation Menu */}
+      {isOpen && (
+        <div className="md:hidden bg-dark-card border-t border-dark-border">
+          <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3">
+            {navItems.map((item) => (
+              <Link
+                key={item.path}
+                to={item.path}
+                className={`block px-3 py-2 rounded-md text-base font-medium transition-all duration-200 ${
+                  isActive(item.path)
+                    ? 'bg-accent-green text-text-primary shadow-md'
+                    : 'text-text-primary hover:bg-dark-hover hover:text-accent-gold'
+                }`}
+                onClick={() => setIsOpen(false)}
+              >
+                <span className="mr-3">{item.icon}</span>
+                {item.label.split(' ').slice(1).join(' ')}
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
     </nav>
   );
 };

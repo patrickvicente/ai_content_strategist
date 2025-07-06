@@ -100,6 +100,12 @@ export const deleteContentItem = async (id) => {
   await api.delete(`/api/content-manager/${id}`);
 };
 
+// Repurpose Content
+export const repurposeContentItem = async (id) => {
+  const response = await api.post(`/api/content-manager/${id}/repurpose`);
+  return response.data;
+};
+
 // Tasks
 export const getTasks = async () => {
   const response = await api.get('/api/tasks');
@@ -132,6 +138,36 @@ export const createAnalytics = async (analytics) => {
   return response.data;
 };
 
+// Advanced Analytics Functions
+export const getAnalyticsDashboard = async (niche) => {
+  const params = niche ? { niche } : {};
+  const response = await api.get('/api/analytics/dashboard', { params });
+  return response.data;
+};
+
+export const getTrendingTopics = async (niche) => {
+  const params = niche ? { niche } : {};
+  const response = await api.get('/api/analytics/trending-topics', { params });
+  return response.data;
+};
+
+export const getCompetitorAnalysis = async (niche) => {
+  const params = niche ? { niche } : {};
+  const response = await api.get('/api/analytics/competitor-analysis', { params });
+  return response.data;
+};
+
+export const getNicheInsights = async (niche) => {
+  const params = niche ? { niche } : {};
+  const response = await api.get('/api/analytics/niche-insights', { params });
+  return response.data;
+};
+
+export const predictContentPerformance = async (content) => {
+  const response = await api.post('/api/analytics/performance-prediction', content);
+  return response.data;
+};
+
 // Dashboard
 export const getDashboardSummary = async () => {
   const response = await api.get('/api/dashboard/summary');
@@ -161,6 +197,15 @@ export const analyzePerformance = async () => {
 
 export const generateWeeklyPlan = async () => {
   const response = await api.post('/api/ai/weekly-plan');
+  return response.data;
+};
+
+// AI-powered content generation
+export const generateContentField = async (fieldType, contentData) => {
+  const response = await api.post('/api/ai/generate-content-field', {
+    field_type: fieldType,
+    content_data: contentData
+  });
   return response.data;
 };
 

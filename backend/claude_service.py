@@ -198,9 +198,11 @@ class ClaudeService:
         For each day, provide:
         - day_name
         - content_suggestions (2-3 per day)
-        - Each suggestion should have: title, pillar, platform, content_type, optimal_time
+        - recommended_pillar
+        - content_type
+        - optimal_posting_time
 
-        Format as JSON object with days as keys.
+        Format as JSON object with 'weekly_plan' array.
         """
         
         try:
@@ -215,7 +217,211 @@ class ClaudeService:
             try:
                 return json.loads(response.content[0].text)
             except json.JSONDecodeError:
-                return {"plan": response.content[0].text}
+                return {"weekly_plan": response.content[0].text}
                 
         except Exception as e:
-            return {"error": f"Failed to generate weekly plan: {str(e)}"} 
+            return {"error": f"Failed to generate weekly plan: {str(e)}"}
+
+    def generate_content_field(self, field_type: str, content_data: Dict, profile_data: Dict, pillar_data: Optional[Dict] = None) -> Dict:
+        """Generate specific content fields (caption, hook, script, hashtags) based on existing content and profile data"""
+        
+        # Build context from existing content data
+        context_info = []
+        if content_data.get('content_title'):
+            context_info.append(f"Title: {content_data['content_title']}")
+        if content_data.get('intention'):
+            context_info.append(f"Intention/Goal: {content_data['intention']}")
+        if content_data.get('content_type'):
+            context_info.append(f"Content Type: {content_data['content_type']}")
+        if content_data.get('content_format'):
+            context_info.append(f"Content Format: {content_data['content_format']}")
+        if content_data.get('music'):
+            context_info.append(f"Music/Audio: {content_data['music']}")
+        
+        # Add existing content fields for context
+        if field_type != 'hook' and content_data.get('hook'):
+            context_info.append(f"Hook: {content_data['hook']}")
+        if field_type != 'caption' and content_data.get('caption'):
+            context_info.append(f"Caption: {content_data['caption']}")
+        if field_type != 'script' and content_data.get('script'):
+            context_info.append(f"Script: {content_data['script']}")
+        if field_type != 'tone' and content_data.get('tone'):
+            context_info.append(f"Tone: {content_data['tone']}")
+        if field_type != 'call_to_action' and content_data.get('call_to_action'):
+            context_info.append(f"Call to Action: {content_data['call_to_action']}")
+        if field_type != 'hashtags' and content_data.get('hashtags_used'):
+            context_info.append(f"Hashtags: {content_data['hashtags_used']}")
+
+        context_str = "\n".join(context_info)
+        
+        # Build pillar context
+        pillar_context = ""
+        if pillar_data:
+            pillar_context = f"""
+CONTENT PILLAR:
+- Name: {pillar_data.get('pillar_name', 'Not specified')}
+- Description: {pillar_data.get('description', 'Not specified')}
+- Keywords: {pillar_data.get('keywords', 'Not specified')}
+- Target Audience: {pillar_data.get('target_audience', 'Not specified')}
+- Goals: {pillar_data.get('goals', 'Not specified')}
+"""
+
+        # Build profile context
+        profile_context = f"""
+CREATOR PROFILE:
+- Mission: {profile_data.get('mission', 'Not specified')}
+- Goals: {profile_data.get('goals', 'Not specified')}
+- Vision: {profile_data.get('vision', 'Not specified')}
+- Niche: {profile_data.get('niche', 'Not specified')}
+- Target Audience: {profile_data.get('target_audience', 'Not specified')}
+- Stories: {profile_data.get('stories', 'Not specified')}
+- Motivation: {profile_data.get('motivation', 'Not specified')}
+"""
+
+        # Generate field-specific prompts
+        if field_type == 'hook':
+            prompt = f"""
+Create an engaging hook for this content that grabs attention within the first 3 seconds.
+
+{profile_context}
+{pillar_context}
+CONTENT CONTEXT:
+{context_str}
+
+The hook should:
+- Be attention-grabbing and make people stop scrolling
+- Align with the creator's mission and target audience
+- Be appropriate for the content type and format
+- Create curiosity or promise value
+- Be concise (1-2 sentences maximum)
+
+Provide just the hook text, no additional formatting or explanation.
+"""
+        
+        elif field_type == 'caption':
+            prompt = f"""
+Create an engaging caption for this content that encourages interaction and engagement.
+
+{profile_context}
+{pillar_context}
+CONTENT CONTEXT:
+{context_str}
+
+The caption should:
+- Reflect the creator's voice and mission
+- Connect with the target audience
+- Include a call-to-action for engagement
+- Tell a story or provide value
+- Be appropriate length for the platform(s)
+- Align with the content pillar goals
+
+Provide just the caption text, no additional formatting or explanation.
+"""
+        
+        elif field_type == 'script':
+            prompt = f"""
+Create a detailed script or talking points for this content.
+
+{profile_context}
+{pillar_context}
+CONTENT CONTEXT:
+{context_str}
+
+The script should:
+- Follow the hook if one exists
+- Deliver on the content's intention/goal
+- Be authentic to the creator's voice
+- Include natural transitions and flow
+- Provide clear value to the audience
+- End with a strong call-to-action
+- Be structured for the content format
+
+Provide the script with clear sections or bullet points for easy filming.
+"""
+        
+        elif field_type == 'hashtags':
+            prompt = f"""
+Generate relevant hashtags for this content that will maximize reach and engagement.
+
+{profile_context}
+{pillar_context}
+CONTENT CONTEXT:
+{context_str}
+
+Generate hashtags that:
+- Include a mix of popular, moderately popular, and niche hashtags
+- Are relevant to the content, creator's niche, and target audience
+- Follow current trends in the space
+- Include branded/personal hashtags if appropriate
+- Aim for 15-25 hashtags total
+- Balance broad reach with targeted audience
+
+Provide hashtags in a single line, separated by spaces, starting with #.
+"""
+        
+        elif field_type == 'tone':
+            prompt = f"""
+Determine the ideal tone and style for this content based on the creator's brand and content context.
+
+{profile_context}
+{pillar_context}
+CONTENT CONTEXT:
+{context_str}
+
+The tone should:
+- Align with the creator's mission and target audience
+- Match the content type and format
+- Be appropriate for the platforms
+- Reflect the content pillar's goals
+- Consider the intention/goal of the content
+
+Choose from tones like: casual, professional, humorous, inspirational, educational, conversational, authoritative, playful, serious, motivational, relatable, authentic, confident, or suggest a combination.
+
+Provide the tone description in 1-2 sentences explaining the recommended style and why it fits.
+"""
+        
+        elif field_type == 'call_to_action':
+            prompt = f"""
+Create a compelling call-to-action for this content that drives engagement and aligns with the creator's goals.
+
+{profile_context}
+{pillar_context}
+CONTENT CONTEXT:
+{context_str}
+
+The call-to-action should:
+- Drive specific engagement (like, comment, share, save, follow)
+- Align with the content's intention and goals
+- Be appropriate for the platforms
+- Match the creator's brand voice
+- Encourage community interaction
+- Be clear and actionable
+
+Consider CTAs like asking questions, requesting opinions, encouraging shares, prompting saves, building community, or driving traffic.
+
+Provide a clear, engaging call-to-action that fits naturally with the content.
+"""
+
+        try:
+            response = self.client.messages.create(
+                model="claude-3-haiku-20240307",
+                max_tokens=1000,
+                messages=[
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            
+            generated_content = response.content[0].text.strip()
+            
+            return {
+                "success": True,
+                "content": generated_content,
+                "field_type": field_type
+            }
+                
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"Failed to generate {field_type}: {str(e)}",
+                "field_type": field_type
+            } 

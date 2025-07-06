@@ -1,255 +1,271 @@
 import React, { useState, useEffect } from 'react';
-import { getDashboardSummary, generateStrategy } from '../services/api.js';
+import { Link } from 'react-router-dom';
+import { getDashboardSummary } from '../services/api';
 
 const Dashboard = () => {
-  const [summary, setSummary] = useState(null);
-  const [strategy, setStrategy] = useState(null);
+  const [summary, setSummary] = useState({
+    platforms: 0,
+    contentPillars: 0,
+    contentIdeas: 0,
+    contentItems: 0,
+    tasks: 0,
+    recentContent: [],
+    recentTasks: []
+  });
   const [loading, setLoading] = useState(true);
-  const [generatingStrategy, setGeneratingStrategy] = useState(false);
 
   useEffect(() => {
-    loadDashboardData();
+    loadDashboard();
   }, []);
 
-  const loadDashboardData = async () => {
+  const loadDashboard = async () => {
     try {
-      const summaryData = await getDashboardSummary();
-      setSummary(summaryData);
+      const data = await getDashboardSummary();
+      // Ensure arrays are always defined
+      setSummary({
+        platforms: data.platforms || 0,
+        contentPillars: data.contentPillars || 0,
+        contentIdeas: data.contentIdeas || 0,
+        contentItems: data.contentItems || 0,
+        tasks: data.tasks || 0,
+        recentContent: data.recentContent || [],
+        recentTasks: data.recentTasks || []
+      });
     } catch (error) {
-      console.error('Error loading dashboard data:', error);
+      console.error('Error loading dashboard:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleGenerateStrategy = async () => {
-    setGeneratingStrategy(true);
-    try {
-      const strategyData = await generateStrategy();
-      setStrategy(strategyData);
-    } catch (error) {
-      console.error('Error generating strategy:', error);
-    } finally {
-      setGeneratingStrategy(false);
-    }
-  };
-
   if (loading) {
     return (
-      <div className="flex justify-center items-center min-h-screen">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-indigo-500"></div>
+      <div className="min-h-screen bg-dark-bg text-text-primary flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent-gold mx-auto mb-4"></div>
+          <p className="text-text-primary">Loading dashboard...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-        <button
-          onClick={handleGenerateStrategy}
-          disabled={generatingStrategy}
-          className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 disabled:opacity-50"
-        >
-          {generatingStrategy ? 'Generating...' : 'Generate AI Strategy'}
-        </button>
-      </div>
+    <div className="min-h-screen bg-dark-bg text-text-primary p-6">
+      <div className="max-w-7xl mx-auto">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-text-primary mb-2">
+            🎯 AI Content Strategy Dashboard
+          </h1>
+          <p className="text-accent-gold">
+            Manage your content strategy with AI-powered insights
+          </p>
+        </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
+        {/* Stats Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
+          <div className="bg-dark-card border border-dark-border rounded-lg p-6 hover:bg-dark-hover transition-colors">
             <div className="flex items-center">
               <div className="flex-shrink-0">
-                <div className="w-8 h-8 bg-indigo-500 rounded-full flex items-center justify-center">
-                  <span className="text-white font-medium">{summary?.total_platforms || 0}</span>
+                <div className="w-8 h-8 bg-accent-green rounded-lg flex items-center justify-center">
+                  <span className="text-text-primary">📱</span>
                 </div>
               </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">Total Platforms</dt>
-                  <dd className="text-lg font-medium text-gray-900">{summary?.total_platforms || 0}</dd>
-                </dl>
+              <div className="ml-4">
+                <h3 className="text-lg font-semibold text-text-primary">{summary.platforms}</h3>
+                <p className="text-accent-gold text-sm">Platforms</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-dark-card border border-dark-border rounded-lg p-6 hover:bg-dark-hover transition-colors">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <div className="w-8 h-8 bg-accent-brown rounded-lg flex items-center justify-center">
+                  <span className="text-text-primary">🏛️</span>
+                </div>
+              </div>
+              <div className="ml-4">
+                <h3 className="text-lg font-semibold text-text-primary">{summary.contentPillars}</h3>
+                <p className="text-accent-gold text-sm">Content Pillars</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-dark-card border border-dark-border rounded-lg p-6 hover:bg-dark-hover transition-colors">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <div className="w-8 h-8 bg-accent-gold rounded-lg flex items-center justify-center">
+                  <span className="text-dark-bg">💡</span>
+                </div>
+              </div>
+              <div className="ml-4">
+                <h3 className="text-lg font-semibold text-text-primary">{summary.contentIdeas}</h3>
+                <p className="text-accent-gold text-sm">Content Ideas</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-dark-card border border-dark-border rounded-lg p-6 hover:bg-dark-hover transition-colors">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <div className="w-8 h-8 bg-accent-red rounded-lg flex items-center justify-center">
+                  <span className="text-text-primary">📋</span>
+                </div>
+              </div>
+              <div className="ml-4">
+                <h3 className="text-lg font-semibold text-text-primary">{summary.contentItems}</h3>
+                <p className="text-accent-gold text-sm">Content Items</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-dark-card border border-dark-border rounded-lg p-6 hover:bg-dark-hover transition-colors">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <div className="w-8 h-8 bg-accent-green rounded-lg flex items-center justify-center">
+                  <span className="text-text-primary">✅</span>
+                </div>
+              </div>
+              <div className="ml-4">
+                <h3 className="text-lg font-semibold text-text-primary">{summary.tasks}</h3>
+                <p className="text-accent-gold text-sm">Tasks</p>
               </div>
             </div>
           </div>
         </div>
 
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
-                  <span className="text-white font-medium">{summary?.total_content_items || 0}</span>
-                </div>
-              </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">Total Content</dt>
-                  <dd className="text-lg font-medium text-gray-900">{summary?.total_content_items || 0}</dd>
-                </dl>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
-                  <span className="text-white font-medium">{summary?.published_content || 0}</span>
-                </div>
-              </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">Published Content</dt>
-                  <dd className="text-lg font-medium text-gray-900">{summary?.published_content || 0}</dd>
-                </dl>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <div className="w-8 h-8 bg-yellow-500 rounded-full flex items-center justify-center">
-                  <span className="text-white font-medium">{summary?.pending_tasks || 0}</span>
-                </div>
-              </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">Pending Tasks</dt>
-                  <dd className="text-lg font-medium text-gray-900">{summary?.pending_tasks || 0}</dd>
-                </dl>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Weekly Performance */}
-      <div className="bg-white shadow rounded-lg">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h2 className="text-lg font-medium text-gray-900">Weekly Performance</h2>
-        </div>
-        <div className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Quick Actions */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <Link
+            to="/content-ideas"
+            className="bg-dark-card border border-dark-border rounded-lg p-6 hover:bg-dark-hover hover:border-accent-gold transition-all transform hover:scale-105"
+          >
             <div className="text-center">
-              <div className="text-3xl font-bold text-indigo-600">{summary?.total_views_week || 0}</div>
-              <div className="text-sm text-gray-500">Total Views</div>
+              <div className="w-12 h-12 bg-accent-gold rounded-lg flex items-center justify-center mx-auto mb-4">
+                <span className="text-dark-bg text-xl">💡</span>
+              </div>
+              <h3 className="text-lg font-semibold text-text-primary mb-2">Generate Ideas</h3>
+              <p className="text-accent-gold text-sm">AI-powered content ideas</p>
             </div>
+          </Link>
+
+          <Link
+            to="/content-manager"
+            className="bg-dark-card border border-dark-border rounded-lg p-6 hover:bg-dark-hover hover:border-accent-green transition-all transform hover:scale-105"
+          >
             <div className="text-center">
-              <div className="text-3xl font-bold text-green-600">{summary?.total_engagement_week || 0}</div>
-              <div className="text-sm text-gray-500">Total Engagement</div>
+              <div className="w-12 h-12 bg-accent-green rounded-lg flex items-center justify-center mx-auto mb-4">
+                <span className="text-text-primary text-xl">📋</span>
+              </div>
+              <h3 className="text-lg font-semibold text-text-primary mb-2">Manage Content</h3>
+              <p className="text-accent-gold text-sm">Track and organize content</p>
+            </div>
+          </Link>
+
+          <Link
+            to="/trend-analytics"
+            className="bg-dark-card border border-dark-border rounded-lg p-6 hover:bg-dark-hover hover:border-accent-red transition-all transform hover:scale-105"
+          >
+            <div className="text-center">
+              <div className="w-12 h-12 bg-accent-red rounded-lg flex items-center justify-center mx-auto mb-4">
+                <span className="text-text-primary text-xl">📈</span>
+              </div>
+              <h3 className="text-lg font-semibold text-text-primary mb-2">Trend Analytics</h3>
+              <p className="text-accent-gold text-sm">AI insights & trends</p>
+            </div>
+          </Link>
+
+          <Link
+            to="/ai-strategy"
+            className="bg-dark-card border border-dark-border rounded-lg p-6 hover:bg-dark-hover hover:border-accent-brown transition-all transform hover:scale-105"
+          >
+            <div className="text-center">
+              <div className="w-12 h-12 bg-accent-brown rounded-lg flex items-center justify-center mx-auto mb-4">
+                <span className="text-text-primary text-xl">🤖</span>
+              </div>
+              <h3 className="text-lg font-semibold text-text-primary mb-2">AI Strategy</h3>
+              <p className="text-accent-gold text-sm">Generate content strategy</p>
+            </div>
+          </Link>
+        </div>
+
+        {/* Recent Activity */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* Recent Content */}
+          <div className="bg-dark-card border border-dark-border rounded-lg p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold text-text-primary">📋 Recent Content</h2>
+              <Link 
+                to="/content-manager" 
+                className="text-accent-gold hover:text-accent-red text-sm font-medium"
+              >
+                View All →
+              </Link>
+            </div>
+            <div className="space-y-3">
+              {(summary.recentContent && summary.recentContent.length > 0) ? (
+                summary.recentContent.map((content) => (
+                  <div key={content.id} className="bg-dark-hover rounded-lg p-3 border border-dark-border">
+                    <h3 className="font-medium text-text-primary">{content.content_title}</h3>
+                    <div className="flex items-center justify-between mt-2">
+                      <span className={`px-2 py-1 rounded text-xs font-medium ${
+                        content.status === 'published' ? 'bg-accent-green text-text-primary' :
+                        content.status === 'scheduled' ? 'bg-accent-gold text-dark-bg' :
+                        'bg-accent-brown text-text-primary'
+                      }`}>
+                        {content.status}
+                      </span>
+                      <span className="text-accent-gold text-xs">
+                        {new Date(content.created_at).toLocaleDateString()}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-accent-gold text-center py-8">
+                  No content items yet. <Link to="/content-manager" className="text-accent-red hover:underline">Create your first content</Link>
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Recent Tasks */}
+          <div className="bg-dark-card border border-dark-border rounded-lg p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold text-text-primary">✅ Recent Tasks</h2>
+              <Link 
+                to="/tasks" 
+                className="text-accent-gold hover:text-accent-red text-sm font-medium"
+              >
+                View All →
+              </Link>
+            </div>
+            <div className="space-y-3">
+              {(summary.recentTasks && summary.recentTasks.length > 0) ? (
+                summary.recentTasks.map((task) => (
+                  <div key={task.id} className="bg-dark-hover rounded-lg p-3 border border-dark-border">
+                    <h3 className="font-medium text-text-primary">{task.title}</h3>
+                    <div className="flex items-center justify-between mt-2">
+                      <span className={`px-2 py-1 rounded text-xs font-medium ${
+                        task.status === 'completed' ? 'bg-accent-green text-text-primary' : 'bg-accent-red text-text-primary'
+                      }`}>
+                        {task.status}
+                      </span>
+                      <span className="text-accent-gold text-xs">
+                        {task.due_date ? new Date(task.due_date).toLocaleDateString() : 'No due date'}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-accent-gold text-center py-8">
+                  No tasks yet. <Link to="/tasks" className="text-accent-red hover:underline">Create your first task</Link>
+                </p>
+              )}
             </div>
           </div>
         </div>
       </div>
-
-      {/* AI Strategy */}
-      {strategy && (
-        <div className="bg-white shadow rounded-lg">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-lg font-medium text-gray-900">AI Strategy Recommendations</h2>
-          </div>
-          <div className="p-6">
-            {strategy.error ? (
-              <div className="text-red-600">
-                <p>{strategy.error}</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {strategy.strategy_recommendations && (
-                  <div>
-                    <h3 className="font-medium text-gray-900">Strategy Recommendations</h3>
-                    <p className="text-gray-600">{strategy.strategy_recommendations}</p>
-                  </div>
-                )}
-                {strategy.content_pillars && (
-                  <div>
-                    <h3 className="font-medium text-gray-900">Content Pillars</h3>
-                    <p className="text-gray-600">{strategy.content_pillars}</p>
-                  </div>
-                )}
-                {strategy.optimal_posting_times && (
-                  <div>
-                    <h3 className="font-medium text-gray-900">Optimal Posting Times</h3>
-                    <p className="text-gray-600">{strategy.optimal_posting_times}</p>
-                  </div>
-                )}
-                {strategy.hashtag_strategies && (
-                  <div>
-                    <h3 className="font-medium text-gray-900">Hashtag Strategies</h3>
-                    <p className="text-gray-600">{strategy.hashtag_strategies}</p>
-                  </div>
-                )}
-                {strategy.strategy_text && (
-                  <div>
-                    <h3 className="font-medium text-gray-900">Strategy</h3>
-                    <pre className="whitespace-pre-wrap text-gray-600">{strategy.strategy_text}</pre>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Recent Analytics */}
-      {summary?.recent_analytics && summary.recent_analytics.length > 0 && (
-        <div className="bg-white shadow rounded-lg">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-lg font-medium text-gray-900">Recent Analytics</h2>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Date
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Views
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Likes
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Comments
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Engagement Rate
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {summary.recent_analytics.map((analytic, index) => (
-                  <tr key={index}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {new Date(analytic.date_recorded).toLocaleDateString()}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {analytic.views}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {analytic.likes}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {analytic.comments}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {(analytic.engagement_rate * 100).toFixed(1)}%
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
